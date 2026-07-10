@@ -1,0 +1,10 @@
+{
+  "best_val_temp_relative_error_pct": 0.21564657282498148,
+  "target_temp_error_pct": 2.0,
+  "passed_temp_accuracy": true,
+  "grid_inference_ms": 9.31,
+  "inference_target_ms_cpu": 200,
+  "inference_target_ms_gpu": 50,
+  "device": "cpu",
+  "checkpoint": "models/pinn_reactor_v1.pt"
+}

@@ -88,6 +88,7 @@ class SyntheticReactorDataGenerator:
             'temp_core_avg': (self.params.nominal_inlet_temp + self.params.nominal_outlet_temp) / 2,
             'mass_flow_rate': self.params.nominal_mass_flow,  # kg/s
             'volumetric_flow_rate': self.params.nominal_flow_rate,  # m³/s
+            'pressure_drop_core': 0.15,  # MPa
             
             # توزیع دما در قلب (شبیه‌سازی نقاط کلیدی)
             'temp_hot_channel': self.params.nominal_outlet_temp + 15,  # داغ‌ترین مجتمع

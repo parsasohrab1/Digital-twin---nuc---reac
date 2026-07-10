@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Build & runtime
+dist/
+build/
+*.parquet
+*.csv
+!config/**/*.csv
+reactor_synthetic_data_*.parquet
+reactor_data_sample_hourly.csv
+reactor_data_metadata.json
+reactor_synthetic_data_plots.png
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Docker volumes (local)
+data/influxdb/
+data/postgres/
+data/redis/
+data/models/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# ML models (large binaries)
+models/*.pt
+models/*.h5
+models/*.onnx
+!models/.gitkeep

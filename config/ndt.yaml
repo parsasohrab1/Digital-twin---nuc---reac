@@ -1,0 +1,125 @@
+# Nuclear Digital Twin – Central Configuration (NDT-ST-02, PINN-05)
+
+reactor:
+  type: PWR
+  reference: VVER-1000
+  nominal_power_mwth: 3000
+  nominal_pressure_mpa: 15.5
+  nominal_inlet_temp_c: 290
+  nominal_outlet_temp_c: 330
+  max_clad_temp_c: 620
+  min_dnbr: 1.3
+
+sensors:
+  sample_rate_hz: 10
+  timeout_sec: 3
+  median_filter_window: 5
+  points:
+    - id: pressure_inlet
+      tag: ns=2;s=Reactor.Pressure.Inlet
+      unit: MPa
+      min: 10.0
+      max: 18.0
+    - id: pressure_outlet
+      tag: ns=2;s=Reactor.Pressure.Outlet
+      unit: MPa
+      min: 10.0
+      max: 18.0
+    - id: temp_inlet
+      tag: ns=2;s=Reactor.Temp.Inlet
+      unit: "°C"
+      min: 250
+      max: 350
+    - id: temp_outlet
+      tag: ns=2;s=Reactor.Temp.Outlet
+      unit: "°C"
+      min: 280
+      max: 360
+    - id: mass_flow
+      tag: ns=2;s=Reactor.Flow.Mass
+      unit: kg/s
+      min: 10000
+      max: 25000
+    - id: power_thermal
+      tag: ns=2;s=Reactor.Power.Thermal
+      unit: MWth
+      min: 0
+      max: 3300
+    - id: dnbr_hot_channel
+      tag: ns=2;s=Reactor.Safety.DNBR
+      unit: ratio
+      min: 1.0
+      max: 3.0
+
+pinn:
+  hidden_layers: 6
+  neurons_per_layer: 128
+  activation: swish
+  lambda_ns: 0.1
+  lambda_energy: 0.1
+  lambda_neutronics: 0.01
+  max_inference_ms: 50
+  model_path: models/pinn_reactor_v1.pt
+  grid_r: 20
+  grid_z: 30
+
+training:
+  epochs: 40
+  batch_size: 512
+  learning_rate: 0.001
+  sample_row_stride: 60
+  points_per_row: 32
+  val_ratio: 0.2
+  target_temp_error_pct: 2.0
+
+ekf:
+  state_vector: [roughness_factor, fouling_resistance, pressure_drop_coefficient, temp_outlet]
+  update_interval_sec: 1
+  max_update_ms: 20
+  buffer_size: 1000
+  innovation_threshold: 3.0
+
+predictor:
+  lstm_layers: 2
+  lstm_memory_steps: 50
+  arima_order: [2, 1, 2]
+  trend_interval_sec: 10
+  scenario_count: 500
+  horizon_sec: 300
+  time_step_sec: 1
+
+dss:
+  optimizer: NSGA-II
+  population: 100
+  max_runtime_ms: 500
+  pareto_max_solutions: 10
+  top_recommendations: 3
+  safety_weights:
+    w1: 0.6
+    w2: 0.4
+  decision_variables:
+    reactor_power_pct: [50, 100]
+    main_pump_flow_pct: [80, 120]
+    boron_injection_ppm_min: [0, 100]
+
+alerts:
+  snooze_minutes: 5
+  levels:
+    critical:
+      color: red
+      condition: dnb_tte_sec <= 300
+    high:
+      color: orange
+      condition: clad_temp_tte_sec <= 600
+    medium:
+      color: yellow
+      condition: abnormal_degradation_rate
+    info:
+      color: blue
+      condition: calibration_completed
+
+performance:
+  max_e2e_latency_ms: 500
+  max_dashboard_update_ms: 200
+  max_ram_gb: 32
+  max_vram_gb: 16

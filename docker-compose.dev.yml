@@ -1,0 +1,38 @@
+# Development overrides - lighter stack without GPU requirements
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  pinn-core:
+    deploy: {}
+    environment:
+      PINN_USE_CPU: "true"
+
+  predictor:
+    deploy: {}
+    environment:
+      PREDICTOR_USE_CPU: "true"
+
+  frontend:
+    build:
+      target: development
+    volumes:
+      - ./frontend/src:/app/src:ro
+    ports:
+      - "5173:5173"
+
+  api-gateway:
+    volumes:
+      - ./backend/services/api-gateway/app:/app/app:ro
+      - ./backend/shared:/app/shared:ro
+    environment:
+      NDT_LOG_LEVEL: DEBUG
+
+  data-ingestion:
+    volumes:
+      - ./backend/services/data-ingestion/app:/app/app:ro
+      - ./backend/shared:/app/shared:ro
+      - ./data/synthetic:/app/data/synthetic:ro
+
+  nginx:
+    profiles:
+      - production-only

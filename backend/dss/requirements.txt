@@ -1,0 +1,2 @@
+-r ../requirements-base.txt
+pymoo==0.6.1.1

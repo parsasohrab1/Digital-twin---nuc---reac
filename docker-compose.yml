@@ -1,0 +1,285 @@
+services:
+  # ── Data Stores ──────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: ndt-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ndt}
+      POSTGRES_USER: ${POSTGRES_USER:-ndt_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_secure_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ndt_user} -d ${POSTGRES_DB:-ndt}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ndt-network
+
+  influxdb:
+    image: influxdb:2.7-alpine
+    container_name: ndt-influxdb
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: ndt_admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${POSTGRES_PASSWORD:-change_me_secure_password}
+      DOCKER_INFLUXDB_INIT_ORG: ${INFLUXDB_ORG:-ndt}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUXDB_BUCKET:-sensor_data}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUXDB_TOKEN:-ndt-dev-token-change-in-production}
+      DOCKER_INFLUXDB_INIT_RETENTION: ${INFLUXDB_RETENTION:-30d}
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+    ports:
+      - "8086:8086"
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ndt-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: ndt-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - ndt-network
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: ndt-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-ndt}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-change_me_rabbit}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    networks:
+      - ndt-network
+
+  # ── OPC UA Simulator (Development) ───────────────────────
+  opcua-simulator:
+    build:
+      context: ./services/opcua-simulator
+      dockerfile: Dockerfile
+    container_name: ndt-opcua-simulator
+    environment:
+      OPCUA_PORT: 4840
+      SAMPLE_RATE_HZ: ${OPCUA_SAMPLE_RATE_HZ:-10}
+    ports:
+      - "4840:4840"
+    networks:
+      - ndt-network
+
+  # ── Microservices ────────────────────────────────────────
+  data-ingestion:
+    build:
+      context: ./backend
+      dockerfile: data_ingestion/Dockerfile
+    container_name: ndt-data-ingestion
+    env_file: .env
+    environment:
+      SERVICE_NAME: data-ingestion
+    volumes:
+      - ./config:/app/config:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      opcua-simulator:
+        condition: service_started
+    networks:
+      - ndt-network
+
+  pinn-core:
+    build:
+      context: ./backend
+      dockerfile: pinn_core/Dockerfile
+    container_name: ndt-pinn-core
+    env_file: .env
+    environment:
+      SERVICE_NAME: pinn-core
+    volumes:
+      - ./config:/app/config:ro
+      - ./models:/app/models:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - ndt-network
+
+  ekf-adapter:
+    build:
+      context: ./backend
+      dockerfile: ekf_adapter/Dockerfile
+    container_name: ndt-ekf-adapter
+    env_file: .env
+    environment:
+      SERVICE_NAME: ekf-adapter
+    volumes:
+      - ./config:/app/config:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - ndt-network
+
+  predictor:
+    build:
+      context: ./backend
+      dockerfile: predictor/Dockerfile
+    container_name: ndt-predictor
+    env_file: .env
+    environment:
+      SERVICE_NAME: predictor
+    volumes:
+      - ./config:/app/config:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - ndt-network
+
+  dss:
+    build:
+      context: ./backend
+      dockerfile: dss/Dockerfile
+    container_name: ndt-dss
+    env_file: .env
+    environment:
+      SERVICE_NAME: dss
+    volumes:
+      - ./config:/app/config:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - ndt-network
+
+  alerts:
+    build:
+      context: ./backend
+      dockerfile: alerts/Dockerfile
+    container_name: ndt-alerts
+    env_file: .env
+    environment:
+      SERVICE_NAME: alerts
+    volumes:
+      - ./config:/app/config:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - ndt-network
+
+  api-gateway:
+    build:
+      context: ./backend
+      dockerfile: api_gateway/Dockerfile
+    container_name: ndt-api-gateway
+    env_file: .env
+    environment:
+      SERVICE_NAME: api-gateway
+    volumes:
+      - ./config:/app/config:ro
+      - ./reactor_synthetic_data_30days.parquet:/app/reactor_synthetic_data_30days.parquet:ro
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      data-ingestion:
+        condition: service_started
+      pinn-core:
+        condition: service_started
+      ekf-adapter:
+        condition: service_started
+      predictor:
+        condition: service_started
+      dss:
+        condition: service_started
+      alerts:
+        condition: service_started
+    networks:
+      - ndt-network
+
+  # ── Frontend ─────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ndt-frontend
+    environment:
+      VITE_API_URL: http://localhost:8000
+      VITE_WS_URL: ws://localhost:8000/ws/reactor
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api-gateway
+    networks:
+      - ndt-network
+
+  # ── Reverse Proxy ────────────────────────────────────────
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: ndt-nginx
+    volumes:
+      - ./infrastructure/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "80:80"
+    depends_on:
+      - api-gateway
+      - frontend
+    networks:
+      - ndt-network
+
+volumes:
+  postgres_data:
+  influxdb_data:
+  redis_data:
+  rabbitmq_data:
+  model_weights:
+
+networks:
+  ndt-network:
+    driver: bridge
